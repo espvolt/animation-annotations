@@ -1,5 +1,8 @@
 import pygame as pg
 
+
+# implement focus later.
+
 class Button():
     def __init__(self, x, y, width=50, height=20, text="Text"):
         self.x = x
