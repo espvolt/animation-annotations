@@ -9,12 +9,12 @@ FORMAT_HORIZONTAL = "horizontal"
 FORMAT_VERTICAL = "vertical"
 FORMAT_GIF = "gif"
 
-MODE_TRANSFORM = "transform"
+MODE_NOTTHING = "nothing"
 MODE_HITBOX = "hitbox"
 
 def _pil2pg(img: Image):
     return pg.image.fromstring(
-        img.tobytes(), img.size, img.mode).convert()
+        img.tobytes(), img.size, img.mode).convert_alpha()
 
 
 class Hitbox():
@@ -45,7 +45,7 @@ class AnimationFrames():
         res: list[AnimationFrame] = []
 
         image = Image.open(self.src)
-
+        img_alpha = image.convert("RGBA")
         step = 0
 
         if (horiz):
@@ -56,18 +56,21 @@ class AnimationFrames():
         for i in range(n_frames):
             if (horiz):
                 crop_rect = (i * step, 0, (i + 1) * step, image.height)
-                surface = _pil2pg(image.crop(crop_rect))
+                surface = _pil2pg(img_alpha.crop(crop_rect))
                 res.append(AnimationFrame(surface))
             # TODO vertical
+
+        image.close()
         return res
     
 
 class AnimationPanel():
     def __init__(self):
-        self.current_split = .6
+        self.curr_split = .6
 
-        self.anim_surf = pg.Surface((config.SCREEN_SIZE[0] * self.current_split, config.SCREEN_SIZE[1]))
-        
+        self.anim_surf = pg.Surface((config.SCREEN_SIZE[0] * self.curr_split, config.SCREEN_SIZE[1]), pg.SRCALPHA)
+        self.anim_bg_surf: pg.Surface | None = None
+
         self.animation_src: str = ""
         self.animation_offset: int = -1 # for flipbook animations
         self.animation_format: str = ""
@@ -86,16 +89,16 @@ class AnimationPanel():
         self.last_time_millis = self.time_millis
 
         # panel stuff
-        self.panel_surf = pg.Surface((config.SCREEN_SIZE[0] * (1 - self.current_split), config.SCREEN_SIZE[1]))
+        self.panel_surf = pg.Surface((config.SCREEN_SIZE[0] * (1 - self.curr_split), config.SCREEN_SIZE[1]))
 
         self.hitbox_button = ui.Button(5, 5)
 
         self.hitbox_button.on_click = self._hitbox_button_pressed
 
-        self.current_mode = "transform"
-        self.hitbox_start_x = 0
-        self.hitbox_start_y = 0
-
+        self.curr_mode = MODE_NOTTHING
+        self.hb_start_x = 0
+        self.hb_start_y = 0
+        self.hb_select_started = False
 
     def _hitbox_button_pressed(self):
         if (not self.paused):
@@ -103,9 +106,29 @@ class AnimationPanel():
             return
     
         input.set_cursor_mode(input.MODE_CROSSHAIR)
+        self.curr_mode = MODE_HITBOX
+
 
     def load_animation(self, src: str):
         self.curr_frames_obj = AnimationFrames(src)
+
+        if (len(self.curr_frames_obj.frames) > 0):
+            first = self.curr_frames_obj.frames[0].surf
+
+            self.anim_bg_surf = pg.Surface(first.get_size(), pg.SRCALPHA)
+            self.anim_bg_surf.fill(config.ANIMATION_BACKGROUND_COLOR0)
+
+    def _update_widgets(self):
+        self.hitbox_button.update(pg.mouse.get_pos())
+
+    def _get_disp_mouse(self):
+        pos = pg.mouse.get_pos()
+        off = (config.SCREEN_SIZE[0] * (1 - self.curr_split), 0)
+
+        return ((pos[0] - off[0] + self.cam_x) / self.zoom, (pos[1] - off[1] + self.cam_y) / self.zoom)
+
+    def _get_bg_mouse(self):
+        pos = self._get_disp_mouse()
 
     def update(self):
         div = 1 / self.fps * 1000
@@ -113,15 +136,22 @@ class AnimationPanel():
         
         if (pg.K_SPACE in input.event_keys):
             self.paused = not self.paused
+
+        if (input.Mouse.j_m_down and self.curr_mode == MODE_HITBOX):
+            if (not self.hb_select_started):
+                self.hb_select_started = True
+
+                self.hb_start_x = pg.mous
         
+        print(self._get_disp_mouse())
+        # camera movement
         if (pg.mouse.get_pressed()[1]):
-            self.cam_x = self.cam_x - input.mouse_rel[0]
-            self.cam_y = self.cam_y - input.mouse_rel[1]
+            self.cam_x = self.cam_x - input.Mouse.rel[0]
+            self.cam_y = self.cam_y - input.Mouse.rel[1]
         else:
-            self.zoom = max(0, self.zoom + input.mouse_wheel[1])
+            self.zoom = max(0.01, self.zoom + input.Mouse.wheel[1])
 
-        self.hitbox_button.update(pg.mouse.get_pos())
-
+        
         if (not self.paused):
             frame_idx = time_millis % len(self.curr_frames_obj.frames)
             self.curr_disp_frame = frame_idx
@@ -129,6 +159,7 @@ class AnimationPanel():
             self.time_millis += pg.time.get_ticks() - self.last_time_millis
 
         self.last_time_millis = pg.time.get_ticks()
+        self._update_widgets()
 
     def _draw_animation_panel(self):
         current_surf = self.curr_frames_obj.frames[self.curr_disp_frame].surf
@@ -141,6 +172,10 @@ class AnimationPanel():
         
         centered = ((surf_size[0] - _size_scaled[0]) / 2 - self.cam_x,
                     (surf_size[1] - _size_scaled[1]) / 2 - self.cam_y)
+
+        if (self.anim_bg_surf is not None):
+            bg_frame_scaled = pg.transform.scale(self.anim_bg_surf, _size_scaled)
+            self.anim_surf.blit(bg_frame_scaled, centered)
 
         self.anim_surf.blit(current_frame_scaled, centered)
 
@@ -155,7 +190,7 @@ class AnimationPanel():
         self._draw_animation_panel()
         self._draw_side_panel()
 
-        dst.blit(self.anim_surf, (config.SCREEN_SIZE[0] * (1 - self.current_split),
+        dst.blit(self.anim_surf, (config.SCREEN_SIZE[0] * (1 - self.curr_split),
                                   0))
         
         dst.blit(self.panel_surf, (0, 0))

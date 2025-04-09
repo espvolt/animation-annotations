@@ -8,7 +8,7 @@ import ui
 pg.init()
 pg.mouse.set_visible(False)
 
-display = pg.display.set_mode(config.SCREEN_SIZE)
+display = pg.display.set_mode(config.SCREEN_SIZE, pg.SRCALPHA)
 
 running = True
 
