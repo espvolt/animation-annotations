@@ -14,4 +14,3 @@ def add(tup1: tuple, tup2: tuple) -> tuple:
         res[i] = v + tup2[i]
 
     return tuple(res)
-

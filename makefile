@@ -1,3 +1,2 @@
 default:
-
-	venv/bin/python src/main.py
+	python src/main.py

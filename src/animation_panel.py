@@ -9,6 +9,9 @@ FORMAT_HORIZONTAL = "horizontal"
 FORMAT_VERTICAL = "vertical"
 FORMAT_GIF = "gif"
 
+MODE_TRANSFORM = "transform"
+MODE_HITBOX = "hitbox"
+
 def _pil2pg(img: Image):
     return pg.image.fromstring(
         img.tobytes(), img.size, img.mode).convert()
@@ -87,6 +90,20 @@ class AnimationPanel():
 
         self.hitbox_button = ui.Button(5, 5)
 
+        self.hitbox_button.on_click = self._hitbox_button_pressed
+
+        self.current_mode = "transform"
+        self.hitbox_start_x = 0
+        self.hitbox_start_y = 0
+
+
+    def _hitbox_button_pressed(self):
+        if (not self.paused):
+            ui.InfoToast.toast("Animation must be paused")
+            return
+    
+        input.set_cursor_mode(input.MODE_CROSSHAIR)
+
     def load_animation(self, src: str):
         self.curr_frames_obj = AnimationFrames(src)
 
@@ -97,11 +114,13 @@ class AnimationPanel():
         if (pg.K_SPACE in input.event_keys):
             self.paused = not self.paused
         
-        if (pg.mouse.get_pressed()[0]):
+        if (pg.mouse.get_pressed()[1]):
             self.cam_x = self.cam_x - input.mouse_rel[0]
             self.cam_y = self.cam_y - input.mouse_rel[1]
         else:
             self.zoom = max(0, self.zoom + input.mouse_wheel[1])
+
+        self.hitbox_button.update(pg.mouse.get_pos())
 
         if (not self.paused):
             frame_idx = time_millis % len(self.curr_frames_obj.frames)
