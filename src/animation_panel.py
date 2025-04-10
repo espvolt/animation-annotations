@@ -9,7 +9,7 @@ FORMAT_HORIZONTAL = "horizontal"
 FORMAT_VERTICAL = "vertical"
 FORMAT_GIF = "gif"
 
-MODE_NOTTHING = "nothing"
+MODE_NOTHING = "nothing"
 MODE_HITBOX = "hitbox"
 
 def _pil2pg(img: Image):
@@ -25,14 +25,16 @@ class Hitbox():
         self.x2 = x2
         self.y2 = y2
 
-        self.draw_color = (255, 0, 0)
+        self.draw_color = (255, 0, 0, 255 / 2)
+        self.surf = pg.Surface((1, 1), pg.SRCALPHA)
 
+        self.surf.fill(self.draw_color)
 
 class AnimationFrame():
     def __init__(self, surf: pg.Surface):
         self.hitboxes: list[Hitbox] = []
         self.surf = surf
-    
+
 class AnimationFrames():
     def __init__(self, src: str, is_gif=False):
         if (is_gif):
@@ -95,10 +97,10 @@ class AnimationPanel():
 
         self.hitbox_button.on_click = self._hitbox_button_pressed
 
-        self.curr_mode = MODE_NOTTHING
+        self.curr_mode = MODE_NOTHING
         self.hb_start_x = 0
         self.hb_start_y = 0
-        self.hb_select_started = False
+        self.hb_select_obj: Hitbox | None = None
 
     def _hitbox_button_pressed(self):
         if (not self.paused):
@@ -133,17 +135,9 @@ class AnimationPanel():
     def _get_bg_mouse(self):
         pos = self._get_disp_mouse()
 
-        current_surf = self.curr_frames_obj.frames[self.curr_disp_frame].surf
+        split_size = (config.SCREEN_SIZE[0] * self.curr_split, config.SCREEN_SIZE[1])
 
-        _size = current_surf.get_size()
-        _size_scaled = (_size[0] * self.zoom, _size[1] * self.zoom)
-        
-        surf_size = self.anim_surf.get_size()
-
-        centered = ((surf_size[0] - _size_scaled[0]) / 2 - self.cam_x,
-                    (surf_size[1] - _size_scaled[1]) / 2 - self.cam_y)
-        
-        return (pos[0] - centered[0], pos[1] - centered[1])
+        return (pos[0] - split_size[0] / 2, pos[1] - split_size[1] / 2)
 
     def update(self):
         div = 1 / self.fps * 1000
@@ -152,20 +146,46 @@ class AnimationPanel():
         if (pg.K_SPACE in input.event_keys):
             self.paused = not self.paused
 
-        if (input.Mouse.j_m_down and self.curr_mode == MODE_HITBOX):
-            if (not self.hb_select_started):
-                self.hb_select_started = True
+        if (pg.K_ESCAPE in input.event_keys):
+            if (self.curr_mode == MODE_HITBOX):
+                self.curr_mode = MODE_NOTHING
+                input.set_cursor_mode(input.MODE_NORMAL)
 
-                self.hb_start_x = pg.mous
-        
-        print(self._get_disp_mouse())
+        if (input.Mouse.j_m_down and self.curr_mode == MODE_HITBOX):
+            if (self.hb_select_obj is not None):
+                curr_frame = self.curr_frames_obj.frames[self.curr_disp_frame]
+                curr_frame.hitboxes.append(self.hb_select_obj)
+                self.hb_select_obj = None
+
+                self.curr_mode = MODE_NOTHING
+                input.set_cursor_mode(input.MODE_NORMAL)
+
+            if (self.hb_select_obj is None):
+                disp_mouse = self._get_bg_mouse()
+
+                self.hb_select_obj = Hitbox(disp_mouse[0], disp_mouse[1], disp_mouse[0], disp_mouse[1])
+                
+        if (self.hb_select_obj is not None):
+            mouse_pos = self._get_bg_mouse()
+            self.hb_select_obj.x2 = mouse_pos[0]
+            self.hb_select_obj.y2 = mouse_pos[1]
         # camera movement
-        if (pg.mouse.get_pressed()[1]):
+        if (pg.mouse.get_pressed()[0]):
             self.cam_x = self.cam_x - input.Mouse.rel[0] / self.zoom
             self.cam_y = self.cam_y - input.Mouse.rel[1] / self.zoom
-        else:
-            self.zoom = max(0.01, self.zoom + input.Mouse.wheel[1])
 
+        else:
+            if (input.Mouse.wheel[1] != 0):
+                split_size = (config.SCREEN_SIZE[0] * self.curr_split,
+                              config.SCREEN_SIZE[1] * self.curr_split)
+
+                cen_pos = (split_size[0] / self.zoom / 2 + self.cam_x,
+                           split_size[1] / self.zoom / 2 + self.cam_y)
+
+                self.zoom = max(0.01, self.zoom + input.Mouse.wheel[1])
+
+                self.cam_x = cen_pos[0] - split_size[0] / 2 / self.zoom
+                self.cam_y = cen_pos[1] - split_size[1] / 2 / self.zoom
         
         if (not self.paused):
             frame_idx = time_millis % len(self.curr_frames_obj.frames)
@@ -175,7 +195,31 @@ class AnimationPanel():
 
         self.last_time_millis = pg.time.get_ticks()
         self._update_widgets()
+    
+    def get_center(self):
+        return (config.SCREEN_SIZE[0] * self.curr_split / 2, config.SCREEN_SIZE / 2)
 
+    def _draw_hitbox_bg(self, hitbox: Hitbox):
+        center = self.get_center()
+
+        hb = self.hb_select_obj
+
+        x0 = (center[0] + hb.x - self.cam_x) * self.zoom
+        y0 = (center[0] + hb.y - self.cam_y) * self.zoom
+
+        x1 = (hb.x2 - self.cam_x) * self.zoom
+        y1 = (hb.y2 - self.cam_y) * self.zoom
+        
+        if (y0 > y1):
+            y0, y1 = y1, y0
+        
+        if (x0 > x1):
+            x0, x1 = x1, x0
+
+        
+        scaled = pg.transform.scale(hb.surf, (abs(x0 - x1), abs(y0 - y1)))
+
+        self.anim_surf.blit(scaled, (x0, y0))
     def _draw_animation_panel(self):
         current_surf = self.curr_frames_obj.frames[self.curr_disp_frame].surf
 
@@ -192,6 +236,33 @@ class AnimationPanel():
             self.anim_surf.blit(bg_frame_scaled, centered)
 
         self.anim_surf.blit(current_frame_scaled, centered)
+
+
+        if (self.hb_select_obj is not None):
+            hb = self.hb_select_obj
+
+            x0 = (hb.x - self.cam_x) * self.zoom
+            y0 = (hb.y - self.cam_y) * self.zoom
+
+            x1 = (hb.x2 - self.cam_x) * self.zoom
+            y1 = (hb.y2 - self.cam_y) * self.zoom
+            
+            print((x0, y0), (x1, y1))
+
+            if (y0 > y1):
+                y0, y1 = y1, y0
+            
+            if (x0 > x1):
+                x0, x1 = x1, x0
+
+            print((x0, y0), (x1, y1))
+            
+            scaled = pg.transform.scale(hb.surf, (abs(x0 - x1), abs(y0 - y1)))
+
+            self.anim_surf.blit(scaled, (x0, y0))
+            draw_col = hb.draw_color
+            # pg.draw.rect(self.anim_surf, (draw_col[0], draw_col[1], draw_col[2], 255 / 2), 
+            #              pg.Rect(pos0, (pos1[0] - pos0[0], pos1[1] - pos0[1])))
 
     def _draw_side_panel(self):
         self.panel_surf.fill(tupmath.add2all(config.CLEAR_COLOR, 30))
