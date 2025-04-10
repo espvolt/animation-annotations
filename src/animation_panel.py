@@ -125,10 +125,25 @@ class AnimationPanel():
         pos = pg.mouse.get_pos()
         off = (config.SCREEN_SIZE[0] * (1 - self.curr_split), 0)
 
-        return ((pos[0] - off[0] + self.cam_x) / self.zoom, (pos[1] - off[1] + self.cam_y) / self.zoom)
+        scaled_cam = (self.cam_x * self.zoom, self.cam_y * self.zoom)
+        world_pos = ((pos[0] - off[0]) + scaled_cam[0], (pos[1] - off[1]) + scaled_cam[1])
+
+        return (world_pos[0] / self.zoom, world_pos[1] / self.zoom)
 
     def _get_bg_mouse(self):
         pos = self._get_disp_mouse()
+
+        current_surf = self.curr_frames_obj.frames[self.curr_disp_frame].surf
+
+        _size = current_surf.get_size()
+        _size_scaled = (_size[0] * self.zoom, _size[1] * self.zoom)
+        
+        surf_size = self.anim_surf.get_size()
+
+        centered = ((surf_size[0] - _size_scaled[0]) / 2 - self.cam_x,
+                    (surf_size[1] - _size_scaled[1]) / 2 - self.cam_y)
+        
+        return (pos[0] - centered[0], pos[1] - centered[1])
 
     def update(self):
         div = 1 / self.fps * 1000
@@ -146,8 +161,8 @@ class AnimationPanel():
         print(self._get_disp_mouse())
         # camera movement
         if (pg.mouse.get_pressed()[1]):
-            self.cam_x = self.cam_x - input.Mouse.rel[0]
-            self.cam_y = self.cam_y - input.Mouse.rel[1]
+            self.cam_x = self.cam_x - input.Mouse.rel[0] / self.zoom
+            self.cam_y = self.cam_y - input.Mouse.rel[1] / self.zoom
         else:
             self.zoom = max(0.01, self.zoom + input.Mouse.wheel[1])
 
@@ -170,8 +185,7 @@ class AnimationPanel():
         current_frame_scaled = pg.transform.scale(current_surf, _size_scaled)
         surf_size = self.anim_surf.get_size()
         
-        centered = ((surf_size[0] - _size_scaled[0]) / 2 - self.cam_x,
-                    (surf_size[1] - _size_scaled[1]) / 2 - self.cam_y)
+        centered = ((surf_size[0] / 2 - self.cam_x) * self.zoom, (surf_size[1] / 2 - self.cam_y) * self.zoom)
 
         if (self.anim_bg_surf is not None):
             bg_frame_scaled = pg.transform.scale(self.anim_bg_surf, _size_scaled)
