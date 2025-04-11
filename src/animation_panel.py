@@ -11,7 +11,7 @@ FORMAT_GIF = "gif"
 
 MODE_NOTHING = "nothing"
 MODE_HITBOX = "hitbox"
-
+MODE_HITBOX_EDIT = "hitbox_edit"
 def _pil2pg(img: Image):
     return pg.image.fromstring(
         img.tobytes(), img.size, img.mode).convert_alpha()
@@ -93,9 +93,16 @@ class AnimationPanel():
         # panel stuff
         self.panel_surf = pg.Surface((config.SCREEN_SIZE[0] * (1 - self.curr_split), config.SCREEN_SIZE[1]))
 
-        self.hitbox_button = ui.Button(5, 5)
+        self.hitbox_button = ui.Button(5, 5, text="New Hitbox")
+        self.hb_name_field = ui.put_elem_bel(ui.TextField(-1, -1, placeholder="Hitbox Name"), self.hitbox_button)
+
+        self.ui_elems = [
+            self.hitbox_button, self.hb_name_field
+        ]
 
         self.hitbox_button.on_click = self._hitbox_button_pressed
+
+        # self.hitbox_name_field = ui.TextField(5)
 
         self.curr_mode = MODE_NOTHING
         self.hb_start_x = 0
@@ -110,6 +117,9 @@ class AnimationPanel():
         input.set_cursor_mode(input.MODE_CROSSHAIR)
         self.curr_mode = MODE_HITBOX
 
+    def _set_hitbox_edit_mode(self):
+        pass
+
 
     def load_animation(self, src: str):
         self.curr_frames_obj = AnimationFrames(src)
@@ -121,7 +131,8 @@ class AnimationPanel():
             self.anim_bg_surf.fill(config.ANIMATION_BACKGROUND_COLOR0)
 
     def _update_widgets(self):
-        self.hitbox_button.update(pg.mouse.get_pos())
+        for elem in self.ui_elems:
+            elem.update(pg.mouse.get_pos())
 
     def _get_disp_mouse(self):
         pos = pg.mouse.get_pos()
@@ -160,7 +171,7 @@ class AnimationPanel():
                 self.curr_mode = MODE_NOTHING
                 input.set_cursor_mode(input.MODE_NORMAL)
 
-            if (self.hb_select_obj is None):
+            elif (self.hb_select_obj is None):
                 disp_mouse = self._get_bg_mouse()
 
                 self.hb_select_obj = Hitbox(disp_mouse[0], disp_mouse[1], disp_mouse[0], disp_mouse[1])
@@ -169,8 +180,19 @@ class AnimationPanel():
             mouse_pos = self._get_bg_mouse()
             self.hb_select_obj.x2 = mouse_pos[0]
             self.hb_select_obj.y2 = mouse_pos[1]
+
         # camera movement
-        if (pg.mouse.get_pressed()[0]):
+        if (input.Mouse.j_m_down and self.curr_mode == MODE_NOTHING):
+            curr_frame = self.curr_frames_obj.frames[self.curr_disp_frame]
+
+            bg_mouse = self._get_bg_mouse()
+
+            for hb in curr_frame.hitboxes:
+                if (bg_mouse[0] > hb.x and bg_mouse[1] > hb.y and bg_mouse[0] < hb.x2 and bg_mouse[1] < hb.y2):
+                    self.paused = True
+                    self.curr_mode = MODE_HITBOX_EDIT
+
+        if (pg.mouse.get_pressed()[1]):
             self.cam_x = self.cam_x - input.Mouse.rel[0] / self.zoom
             self.cam_y = self.cam_y - input.Mouse.rel[1] / self.zoom
 
@@ -197,18 +219,16 @@ class AnimationPanel():
         self._update_widgets()
     
     def get_center(self):
-        return (config.SCREEN_SIZE[0] * self.curr_split / 2, config.SCREEN_SIZE / 2)
+        return (config.SCREEN_SIZE[0] * self.curr_split / 2, config.SCREEN_SIZE[1] / 2)
 
-    def _draw_hitbox_bg(self, hitbox: Hitbox):
+    def _draw_hitbox_bg(self, hb: Hitbox):
         center = self.get_center()
 
-        hb = self.hb_select_obj
-
         x0 = (center[0] + hb.x - self.cam_x) * self.zoom
-        y0 = (center[0] + hb.y - self.cam_y) * self.zoom
+        y0 = (center[1] + hb.y - self.cam_y) * self.zoom
 
-        x1 = (hb.x2 - self.cam_x) * self.zoom
-        y1 = (hb.y2 - self.cam_y) * self.zoom
+        x1 = (center[0] + hb.x2 - self.cam_x) * self.zoom
+        y1 = (center[1] + hb.y2 - self.cam_y) * self.zoom
         
         if (y0 > y1):
             y0, y1 = y1, y0
@@ -220,8 +240,10 @@ class AnimationPanel():
         scaled = pg.transform.scale(hb.surf, (abs(x0 - x1), abs(y0 - y1)))
 
         self.anim_surf.blit(scaled, (x0, y0))
+
     def _draw_animation_panel(self):
-        current_surf = self.curr_frames_obj.frames[self.curr_disp_frame].surf
+        curr_frame = self.curr_frames_obj.frames[self.curr_disp_frame]
+        current_surf = curr_frame.surf
 
         _size = current_surf.get_size()
         _size_scaled = (_size[0] * self.zoom, _size[1] * self.zoom)
@@ -231,43 +253,25 @@ class AnimationPanel():
         
         centered = ((surf_size[0] / 2 - self.cam_x) * self.zoom, (surf_size[1] / 2 - self.cam_y) * self.zoom)
 
+
         if (self.anim_bg_surf is not None):
             bg_frame_scaled = pg.transform.scale(self.anim_bg_surf, _size_scaled)
             self.anim_surf.blit(bg_frame_scaled, centered)
 
         self.anim_surf.blit(current_frame_scaled, centered)
 
-
         if (self.hb_select_obj is not None):
-            hb = self.hb_select_obj
-
-            x0 = (hb.x - self.cam_x) * self.zoom
-            y0 = (hb.y - self.cam_y) * self.zoom
-
-            x1 = (hb.x2 - self.cam_x) * self.zoom
-            y1 = (hb.y2 - self.cam_y) * self.zoom
-            
-            print((x0, y0), (x1, y1))
-
-            if (y0 > y1):
-                y0, y1 = y1, y0
-            
-            if (x0 > x1):
-                x0, x1 = x1, x0
-
-            print((x0, y0), (x1, y1))
-            
-            scaled = pg.transform.scale(hb.surf, (abs(x0 - x1), abs(y0 - y1)))
-
-            self.anim_surf.blit(scaled, (x0, y0))
-            draw_col = hb.draw_color
+            self._draw_hitbox_bg(self.hb_select_obj)
             # pg.draw.rect(self.anim_surf, (draw_col[0], draw_col[1], draw_col[2], 255 / 2), 
             #              pg.Rect(pos0, (pos1[0] - pos0[0], pos1[1] - pos0[1])))
 
+        for hb in curr_frame.hitboxes:
+            self._draw_hitbox_bg(hb)
+
     def _draw_side_panel(self):
         self.panel_surf.fill(tupmath.add2all(config.CLEAR_COLOR, 30))
-
         self.hitbox_button.draw(self.panel_surf)
+        self.hb_name_field.draw(self.panel_surf)
 
     def draw(self, dst: pg.Surface):
         self.anim_surf.fill(config.CLEAR_COLOR)

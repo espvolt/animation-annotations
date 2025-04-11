@@ -36,7 +36,7 @@ def update():
         event_keys.append(event.key)
 
     for event in pg.event.get((pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP)):
-        if (event.type == pg.MOUSEBUTTONDOWN):
+        if (event.type == pg.MOUSEBUTTONDOWN and event.button == 1):
             Mouse.j_m_down = True
         elif (event.type == pg.MOUSEBUTTONUP):
             Mouse.j_m_up = True
