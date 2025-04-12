@@ -10,7 +10,7 @@ FORMAT_VERTICAL = "vertical"
 FORMAT_GIF = "gif"
 
 MODE_NOTHING = "nothing"
-MODE_HITBOX = "hitbox"
+MODE_HITBOX_CREATE = "hitbox_create"
 MODE_HITBOX_EDIT = "hitbox_edit"
 def _pil2pg(img: Image):
     return pg.image.fromstring(
@@ -27,6 +27,7 @@ class Hitbox():
 
         self.draw_color = (255, 0, 0, 255 / 2)
         self.surf = pg.Surface((1, 1), pg.SRCALPHA)
+        self.name = ""
 
         self.surf.fill(self.draw_color)
 
@@ -85,6 +86,7 @@ class AnimationPanel():
         self.cam_y = 0
 
         self.paused = False
+        self.cannot_unpause = False
 
         self.fps = 1
         self.time_millis = pg.time.get_ticks()
@@ -94,14 +96,18 @@ class AnimationPanel():
         self.panel_surf = pg.Surface((config.SCREEN_SIZE[0] * (1 - self.curr_split), config.SCREEN_SIZE[1]))
 
         self.hitbox_button = ui.Button(5, 5, text="New Hitbox")
-        self.hb_name_field = ui.put_elem_bel(ui.TextField(-1, -1, placeholder="Hitbox Name"), self.hitbox_button)
+        self.hb_name_field: ui.TextField = ui.put_elem_bel(ui.TextField(-1, -1, placeholder="Hitbox Name"), self.hitbox_button)
 
-        self.ui_elems = [
+
+        self.ui_elems: list[ui.UiElement] = [
             self.hitbox_button, self.hb_name_field
         ]
 
         self.hitbox_button.on_click = self._hitbox_button_pressed
 
+        self.hb_name_field.on_text_changed = self._hitbox_name_edited
+        self.hb_name_field.on_submit = self._hitbox_name_submitted
+        self.hb_name_field.hidden = True
         # self.hitbox_name_field = ui.TextField(5)
 
         self.curr_mode = MODE_NOTHING
@@ -109,17 +115,28 @@ class AnimationPanel():
         self.hb_start_y = 0
         self.hb_select_obj: Hitbox | None = None
 
+        self.j_mouse_buttons = (False, False, False)
+
     def _hitbox_button_pressed(self):
         if (not self.paused):
             ui.InfoToast.toast("Animation must be paused")
             return
     
         input.set_cursor_mode(input.MODE_CROSSHAIR)
-        self.curr_mode = MODE_HITBOX
+        self.curr_mode = MODE_HITBOX_CREATE
 
-    def _set_hitbox_edit_mode(self):
-        pass
+    def _hitbox_name_edited(self):
+        if (self.hb_select_obj is None):
+            ui.InfoToast.toast("Error has occurred, please re-select the hitbox")
 
+        self.hb_select_obj.name = self.hb_name_field.curr_text
+
+    def _hitbox_name_submitted(self):
+        if (self.hb_select_obj is None):
+            ui.InfoToast.toast("How did this happen")
+
+        self.cannot_unpause = False
+        self._enter_normal()
 
     def load_animation(self, src: str):
         self.curr_frames_obj = AnimationFrames(src)
@@ -131,8 +148,20 @@ class AnimationPanel():
             self.anim_bg_surf.fill(config.ANIMATION_BACKGROUND_COLOR0)
 
     def _update_widgets(self):
+        j_mouse = self.j_mouse_buttons
+        pressed = pg.mouse.get_pressed()
+        j_pressed = (not j_mouse[0] and pressed[0], pressed[1] and not j_mouse[1], pressed[2] and not j_mouse[2])
+        
+        if (any(j_pressed)):
+            for elem in sorted(self.ui_elems, key=lambda x: x.z_ind):
+                if (elem.handle_click(pg.mouse.get_pos(), j_pressed)):
+                    ui.CurrentUiState.curr_focus = elem
+                    break
+
         for elem in self.ui_elems:
             elem.update(pg.mouse.get_pos())
+
+        self.j_mouse_buttons = pressed
 
     def _get_disp_mouse(self):
         pos = pg.mouse.get_pos()
@@ -150,33 +179,45 @@ class AnimationPanel():
 
         return (pos[0] - split_size[0] / 2, pos[1] - split_size[1] / 2)
 
+    def _enter_normal_mode(self):
+        self.cannot_unpause = False
+        self.curr_mode = MODE_NOTHING
+
+        input.set_cursor_mode(input.MODE_NORMAL)
+
+    def _enter_hb_edit_mode(self, hb: Hitbox):
+        self.paused = True
+        self.cannot_unpause = True
+
+        self.hb_select_obj = hb
+        self.hb_name_field.hidden = False
+
+        self.curr_mode = MODE_HITBOX_EDIT
+
     def update(self):
         div = 1 / self.fps * 1000
         time_millis = int(self.time_millis / div)
         
-        if (pg.K_SPACE in input.event_keys):
+        if (pg.K_SPACE in input.event_keys and not self.cannot_unpause):
             self.paused = not self.paused
 
         if (pg.K_ESCAPE in input.event_keys):
-            if (self.curr_mode == MODE_HITBOX):
-                self.curr_mode = MODE_NOTHING
-                input.set_cursor_mode(input.MODE_NORMAL)
+            if (self.curr_mode == MODE_HITBOX_CREATE):
+                self._enter_normal_mode()
 
-        if (input.Mouse.j_m_down and self.curr_mode == MODE_HITBOX):
+        if (input.Mouse.j_m_down and self.curr_mode == MODE_HITBOX_CREATE):
             if (self.hb_select_obj is not None):
                 curr_frame = self.curr_frames_obj.frames[self.curr_disp_frame]
                 curr_frame.hitboxes.append(self.hb_select_obj)
-                self.hb_select_obj = None
 
-                self.curr_mode = MODE_NOTHING
-                input.set_cursor_mode(input.MODE_NORMAL)
+                self._enter_hb_edit_mode(self.hb_select_obj)
 
             elif (self.hb_select_obj is None):
                 disp_mouse = self._get_bg_mouse()
 
                 self.hb_select_obj = Hitbox(disp_mouse[0], disp_mouse[1], disp_mouse[0], disp_mouse[1])
-                
-        if (self.hb_select_obj is not None):
+        
+        if (self.hb_select_obj is not None and self.curr_mode == MODE_HITBOX_CREATE):
             mouse_pos = self._get_bg_mouse()
             self.hb_select_obj.x2 = mouse_pos[0]
             self.hb_select_obj.y2 = mouse_pos[1]
@@ -189,9 +230,9 @@ class AnimationPanel():
 
             for hb in curr_frame.hitboxes:
                 if (bg_mouse[0] > hb.x and bg_mouse[1] > hb.y and bg_mouse[0] < hb.x2 and bg_mouse[1] < hb.y2):
-                    self.paused = True
-                    self.curr_mode = MODE_HITBOX_EDIT
-
+                    self._enter_hb_edit_mode(hb)
+                    break
+                
         if (pg.mouse.get_pressed()[1]):
             self.cam_x = self.cam_x - input.Mouse.rel[0] / self.zoom
             self.cam_y = self.cam_y - input.Mouse.rel[1] / self.zoom
@@ -260,18 +301,20 @@ class AnimationPanel():
 
         self.anim_surf.blit(current_frame_scaled, centered)
 
-        if (self.hb_select_obj is not None):
-            self._draw_hitbox_bg(self.hb_select_obj)
-            # pg.draw.rect(self.anim_surf, (draw_col[0], draw_col[1], draw_col[2], 255 / 2), 
-            #              pg.Rect(pos0, (pos1[0] - pos0[0], pos1[1] - pos0[1])))
-
+        if (self.hb_select_obj is not None): # cool thing is if the hitbox is already created and its being selected
+            self._draw_hitbox_bg(self.hb_select_obj) # itll be drawn twice so it kinda works out, although i can imagine it
+            # gets confusing when i implement overlapping hitbox creation
+            
         for hb in curr_frame.hitboxes:
             self._draw_hitbox_bg(hb)
 
     def _draw_side_panel(self):
         self.panel_surf.fill(tupmath.add2all(config.CLEAR_COLOR, 30))
-        self.hitbox_button.draw(self.panel_surf)
-        self.hb_name_field.draw(self.panel_surf)
+        for elem in sorted(self.ui_elems, key=lambda x: x.z_ind):
+            if (elem.hidden):
+                continue
+
+            elem.draw(self.panel_surf)
 
     def draw(self, dst: pg.Surface):
         self.anim_surf.fill(config.CLEAR_COLOR)
