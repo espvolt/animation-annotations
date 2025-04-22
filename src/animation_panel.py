@@ -28,7 +28,12 @@ class Hitbox():
         self.draw_color = (255, 0, 0, 255 / 2)
         self.surf = pg.Surface((1, 1), pg.SRCALPHA)
         self.name = ""
+        self.flag: str = ""
 
+        self.surf.fill(self.draw_color)
+
+    def set_draw_col(self, val):
+        self.draw_color = (val[0], val[1], val[2], 255 / 2)
         self.surf.fill(self.draw_color)
 
 class AnimationFrame():
@@ -99,7 +104,7 @@ class AnimationPanel():
         self.hb_name_field: ui.TextField = ui.put_elem_bel(ui.TextField(-1, -1, placeholder="Hitbox Name"), self.hitbox_button)
 
         self.dropdown_options = ["Hitbox", "Hurtbox", "Collider"]
-        self.hb_flag_dropdown = ui.ComboBox = ui.put_elem_bel(ui.ComboBox(-1, -1, self.dropdown_options), self.hb_name_field)
+        self.hb_flag_dropdown: ui.ComboBox = ui.put_elem_bel(ui.ComboBox(-1, -1, self.dropdown_options), self.hb_name_field)
 
         self.ui_elems: list[ui.UiElement] = [
             self.hitbox_button, self.hb_name_field, self.hb_flag_dropdown
@@ -110,6 +115,9 @@ class AnimationPanel():
         self.hb_name_field.on_text_changed = self._hitbox_name_edited
         self.hb_name_field.on_submit = self._hitbox_name_submitted
         self.hb_name_field.hidden = True
+
+        self.hb_flag_dropdown.on_option_changed = self._hitbox_flag_changed
+        self.hb_flag_dropdown.hidden = True
         # self.hitbox_name_field = ui.TextField(5)
 
         self.curr_mode = MODE_NOTHING
@@ -132,6 +140,13 @@ class AnimationPanel():
             ui.InfoToast.toast("Error has occurred, please re-select the hitbox")
 
         self.hb_select_obj.name = self.hb_name_field.curr_text
+
+    def _hitbox_flag_changed(self, s):
+        if (self.hb_select_obj is None):
+            ui.InfoToast.toast("Error has occurred, please re-select the hitbox")
+
+        self.hb_select_obj.set_draw_col(config.HITBOX_DRAW_COLORS[s])
+        self.hb_select_obj.flag = s
 
     def _hitbox_name_submitted(self):
         if (self.hb_select_obj is None):
@@ -193,7 +208,7 @@ class AnimationPanel():
 
         self.hb_select_obj = hb
         self.hb_name_field.hidden = False
-
+        self.hb_flag_dropdown.hidden = False
         self.curr_mode = MODE_HITBOX_EDIT
 
     def update(self):

@@ -251,21 +251,25 @@ class ComboBox(UiElement):
         self.dd_main_col = (20, 20, 20)
         self.dd_bg_col = (255, 255, 255)
 
-        self.box_surf: pg.Surface = None
-        self.dd_bg_surf: pg.Surface = None
-        self.render_selected(None)
-
         self.box_dropped = False
         
         self.height = 20
-
-        self.sel_h = self.box_surf.get_size()[1]
-        self.box_h = self.box_surf.get_size()[1]
+        self.min_width = 100
 
         self.curr_sel: str | None = None
         
         self.options: dict[str, pg.Surface] = {}
-        self.width = self.box_surf.get_size()[0]
+
+        self.sel_surf: pg.Surface = None
+        self.dd_bg_surf: pg.Surface = None
+        self.render_selected(None)
+
+        self.sel_h = self.sel_surf.get_size()[1]
+        self.box_h = self.sel_surf.get_size()[1]
+
+        self.box_surf: pg.Surface = pg.Surface((self.min_width, self.box_h))
+        self.box_surf.fill(self.bg_col)
+        self.width = self.min_width
 
         self.on_option_changed: Callable | None = None
 
@@ -284,18 +288,17 @@ class ComboBox(UiElement):
 
     def render_selected(self, text: str | None):
         if (text is None):
-            self.box_surf = Button.BUTTON_FONT.render("Placeholder", True, self.placeholder_col, self.bg_col)
+            self.sel_surf = Button.BUTTON_FONT.render("Placeholder", True, self.placeholder_col, self.bg_col)
         
         else:
-            self.box_surf = Button.BUTTON_FONT.render(text, True, self.placeholder_col, self.bg_col)
+            self.sel_surf = Button.BUTTON_FONT.render(text, True, self.placeholder_col, self.bg_col)
 
     def handle_click(self, mouse_pos, buttons):
         if (not buttons[0]):
             return False
         
         if (self.box_dropped):
-            for i, item in enumerate(self.options.items()):
-                s, surf = item
+            for i, s in enumerate(self.options.keys()):
                 if (tupmath.pinrect(mouse_pos, (self.x, self.y + self.box_h * (i + 1), self.width, self.box_h))):
                     self.render_selected(s)
 
@@ -304,6 +307,7 @@ class ComboBox(UiElement):
                     
                     self.box_dropped = False
                     return True
+                
         if (tupmath.pinrect(mouse_pos, (self.x, self.y, self.width, self.height)) and buttons[0]):
             self.box_dropped = not self.box_dropped
 
@@ -314,17 +318,18 @@ class ComboBox(UiElement):
             add_h = len(self.options) * self.box_h
             self.height = self.box_h + add_h
         
-        else:
-            
+        else:            
             self.height = self.box_surf.get_size()[1]
-            pass
 
+        self.width = max(self.min_width, self.sel_surf.get_size()[0])
         
         return super().update(mouse_pos)
     
     def draw(self, dst: pg.Surface):
-        if (self.box_surf is not None):
-            dst.blit(self.box_surf, (self.x, self.y))
+        dst.blit(self.box_surf, (self.x, self.y))
+
+        if (self.sel_surf is not None):
+            dst.blit(self.sel_surf, (self.x, self.y))
 
         if (self.box_dropped and len(self.options) != 0):
             y_off = (self.y + self.box_h)
