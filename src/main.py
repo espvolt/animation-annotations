@@ -20,7 +20,6 @@ toast_instance = ui.InfoToast.get_()
 while (running):
     display.fill(config.CLEAR_COLOR)
 
-
     for event in pg.event.get(pg.QUIT):
         if (event.type == pg.QUIT):
             running = False

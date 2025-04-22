@@ -98,9 +98,11 @@ class AnimationPanel():
         self.hitbox_button = ui.Button(5, 5, text="New Hitbox")
         self.hb_name_field: ui.TextField = ui.put_elem_bel(ui.TextField(-1, -1, placeholder="Hitbox Name"), self.hitbox_button)
 
+        self.dropdown_options = ["Hitbox", "Hurtbox", "Collider"]
+        self.hb_flag_dropdown = ui.ComboBox = ui.put_elem_bel(ui.ComboBox(-1, -1, self.dropdown_options), self.hb_name_field)
 
         self.ui_elems: list[ui.UiElement] = [
-            self.hitbox_button, self.hb_name_field
+            self.hitbox_button, self.hb_name_field, self.hb_flag_dropdown
         ]
 
         self.hitbox_button.on_click = self._hitbox_button_pressed

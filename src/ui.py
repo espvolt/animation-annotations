@@ -3,7 +3,7 @@ import sys
 import input
 from typing import Callable
 from collections import deque 
-
+import tupmath
 # implement focus later.
 class InfoToast:
     class Text:
@@ -237,3 +237,100 @@ class TextField(UiElement):
     def draw(self, dst: pg.Surface):
         pg.draw.rect(dst, self.bg_col, pg.Rect(self.x, self.y, self.width, self.height))
         dst.blit(self.text_surf, (self.x, self.y))
+
+class ComboBox(UiElement):
+    def __init__(self, x, y, starting_options: list[str]=[]):
+        super().__init__()
+
+        self.x = x
+        self.y = y
+        
+        self.placeholder_col = (30, 30, 30)
+        self.main_col = (0, 0, 0)
+        self.bg_col = (255, 255, 255)
+        self.dd_main_col = (20, 20, 20)
+        self.dd_bg_col = (255, 255, 255)
+
+        self.box_surf: pg.Surface = None
+        self.dd_bg_surf: pg.Surface = None
+        self.render_selected(None)
+
+        self.box_dropped = False
+        
+        self.height = 20
+
+        self.sel_h = self.box_surf.get_size()[1]
+        self.box_h = self.box_surf.get_size()[1]
+
+        self.curr_sel: str | None = None
+        
+        self.options: dict[str, pg.Surface] = {}
+        self.width = self.box_surf.get_size()[0]
+
+        self.on_option_changed: Callable | None = None
+
+        for option in starting_options:
+            self.add_option(option)
+
+    def add_option(self, text: str):
+        self.options[text] = Button.BUTTON_FONT.render(text, True, self.dd_main_col, self.dd_bg_col)
+        max_w = self.width
+
+        for val in self.options.values():
+            max_w = max(max_w, val.get_size()[0])
+
+        self.dd_bg_surf = pg.Surface((max_w, self.box_h * len(self.options)))
+        self.dd_bg_surf.fill(self.dd_bg_col)
+
+    def render_selected(self, text: str | None):
+        if (text is None):
+            self.box_surf = Button.BUTTON_FONT.render("Placeholder", True, self.placeholder_col, self.bg_col)
+        
+        else:
+            self.box_surf = Button.BUTTON_FONT.render(text, True, self.placeholder_col, self.bg_col)
+
+    def handle_click(self, mouse_pos, buttons):
+        if (not buttons[0]):
+            return False
+        
+        if (self.box_dropped):
+            for i, item in enumerate(self.options.items()):
+                s, surf = item
+                if (tupmath.pinrect(mouse_pos, (self.x, self.y + self.box_h * (i + 1), self.width, self.box_h))):
+                    self.render_selected(s)
+
+                    if (self.on_option_changed is not None):
+                        self.on_option_changed(s)
+                    
+                    self.box_dropped = False
+                    return True
+        if (tupmath.pinrect(mouse_pos, (self.x, self.y, self.width, self.height)) and buttons[0]):
+            self.box_dropped = not self.box_dropped
+
+            return True
+        
+    def update(self, mouse_pos):
+        if (self.box_dropped): # height should change
+            add_h = len(self.options) * self.box_h
+            self.height = self.box_h + add_h
+        
+        else:
+            
+            self.height = self.box_surf.get_size()[1]
+            pass
+
+        
+        return super().update(mouse_pos)
+    
+    def draw(self, dst: pg.Surface):
+        if (self.box_surf is not None):
+            dst.blit(self.box_surf, (self.x, self.y))
+
+        if (self.box_dropped and len(self.options) != 0):
+            y_off = (self.y + self.box_h)
+            
+            if (self.dd_bg_surf is not None):
+                dst.blit(self.dd_bg_surf, (self.x, y_off))
+
+            for i, option_surf in enumerate(self.options.values()):
+                dst.blit(option_surf, (self.x, self.y + self.box_h * (i + 1)))
