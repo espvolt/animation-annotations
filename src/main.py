@@ -4,6 +4,7 @@ import config
 from animation_panel import AnimationPanel
 import input
 import ui
+import shared
 
 pg.init()
 pg.mouse.set_visible(False)
@@ -23,7 +24,8 @@ while (running):
     for event in pg.event.get(pg.QUIT):
         if (event.type == pg.QUIT):
             running = False
-    
+
+    shared.update()    
     input.update()
     toast_instance.update()
 

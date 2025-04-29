@@ -3,6 +3,7 @@ import sys
 import input
 from typing import Callable
 from collections import deque 
+from shared import Dt
 import tupmath
 # implement focus later.
 class InfoToast:
@@ -65,14 +66,21 @@ class InfoToast:
 
         return InfoToast.INSTANCE
 
+def rounded_border(surf: pg.Surface, radius: float, col: tuple[int, int, int]):
+    surf_size = surf.get_size()
+    pg.draw.rect(surf, col, pg.Rect(0, 0, surf_size[0], surf_size[1]), border_radius=radius)
 
-            
 def set_info_text(text: str, color: tuple[int, int, int], timeout_time=1.0):
     current_info_text = text
 
     
 
 POSITION_BELOW = "position_below"
+
+TEXT_ALIGN_LEFT = "text_align_left"
+TEXT_ALIGN_RIGHT = "text_align_right"
+TEXT_ALIGN_CENTER = "text_align_center"
+
 class UiElement():
     ID_COUNT = 0
 
@@ -126,7 +134,7 @@ position_functions = {
 class Button(UiElement):
     BUTTON_FONT: pg.font.Font | None = None
 
-    def __init__(self, x, y, width=50, height=20, text="Text", draw_col=(255, 255, 255), text_col=(0, 0, 0)):
+    def __init__(self, x, y, width=200, height=60, text="Text", draw_col=(255, 255, 255), text_col=(0, 0, 0)):
         super().__init__()
 
         if (Button.BUTTON_FONT is None):
@@ -139,9 +147,19 @@ class Button(UiElement):
         self.height = height
 
         self.draw_color = draw_col
-        self.text_color = text_col
+        self.bg_col = draw_col
+        self.hov_col = (0, 0, 0)
+
+
+        self.txt_draw_col = text_col
+        self.text_col = text_col
+        self.txt_hov_col = (255, 255, 255)
+
+        self.hover_val = 0.0
+
         self.text = text
-        self.text_surf: pg.Surface = Button.BUTTON_FONT.render(self.text, True, self.text_color)
+        self.text_surf: pg.Surface = Button.BUTTON_FONT.render(self.text, True, self.txt_draw_col)
+        self.text_align = TEXT_ALIGN_CENTER
 
         text_surf_size = self.text_surf.get_size()
 
@@ -152,6 +170,18 @@ class Button(UiElement):
             self.height = text_surf_size[1] + 5
 
         self.on_click: Callable | None = None
+
+    def update(self, mouse_pos: tuple[int, int]):
+        if (tupmath.pinrect(mouse_pos, (self.x, self.y, self.width, self.height))):
+            self.hover_val = min(1, self.hover_val + (1 * Dt.millis))
+
+        else:
+            self.hover_val = max(0, self.hover_val - (1 * Dt.millis))
+
+        self.draw_color = tupmath.lerp_3(self.bg_col, self.hov_col, self.hover_val)
+        self.txt_draw_col = tupmath.lerp_3(self.text_col, self.txt_hov_col, self.hover_val)
+
+        self.text_surf: pg.Surface = Button.BUTTON_FONT.render(self.text, True, self.txt_draw_col)
 
     def handle_click(self, mouse_pos: tuple[int, int], buttons: tuple[bool, bool, bool]) -> bool:
         mouse_inp = pg.mouse.get_pressed()
@@ -164,13 +194,28 @@ class Button(UiElement):
                 return True
             
         return False
+    
     def draw(self, dst: pg.Surface):
-        pg.draw.rect(dst, self.draw_color, pg.Rect(self.x, self.y, self.width, self.height))
-        dst.blit(self.text_surf, (self.x, self.y))
+        pg.draw.rect(dst, self.draw_color, pg.Rect(self.x, self.y, self.width, self.height), border_radius=40)
+        
+        txt_size = self.text_surf.get_size()
+
+        dst_x = self.x
+        dst_y = self.y + self.height / 2 - txt_size[1] / 2
+
+        if (self.text_align == TEXT_ALIGN_CENTER):
+
+            dst_x = self.x + self.width / 2 - txt_size[0] / 2
+
+        elif (self.text_align == TEXT_ALIGN_RIGHT):
+            dst_x = self.x + self.width - txt_size[0]
+
+        dst.blit(self.text_surf, (dst_x, dst_y))
 
 class TextField(UiElement):
     TEXT_FIELD_FONT = None
-    
+    CURSOR_BLINK_TIME = 500
+
     def __init__(self, x, y, bg_col=(255, 255, 255), text_col=(0, 0, 0), placeholder="", shape_min: tuple[int, int]=(50, 20)):
         super().__init__()
 
@@ -192,8 +237,16 @@ class TextField(UiElement):
         
         self.placeholder = placeholder
         self.text_surf: pg.Surface | None = None
-        self.curr_text = ""
+        
+        self.curr_text: list[str] = []
+        self.curr_pos = 0
+        
         self.on_text_changed: Callable | None = None
+
+        self.cursor_showing = False
+        self.cursor_col = (0, 0, 0)
+
+        self.last_millis = pg.time.get_ticks()
 
         self._render_curr_text()
 
@@ -206,9 +259,16 @@ class TextField(UiElement):
         if (self.curr_text == ""):
             self.text_surf = TextField.TEXT_FIELD_FONT.render(self.placeholder, True, self.plchol_col)
         else:
-            self.text_surf = TextField.TEXT_FIELD_FONT.render(self.curr_text, True, self.text_col)
+            self.text_surf = TextField.TEXT_FIELD_FONT.render("".join(self.curr_text), True, self.text_col)
 
     def update(self, mouse_pos: tuple[int, int]):
+        if (CurrentUiState.curr_focus == self):
+            if (pg.time.get_ticks() - self.last_millis > TextField.CURSOR_BLINK_TIME):
+                self.cursor_showing = not self.cursor_showing
+                self.last_millis = pg.time.get_ticks()
+        else:
+            self.cursor_showing = False
+
         txt_surf_size = self.text_surf.get_size()
 
         self.width =  max(txt_surf_size[0] + 5, self.width_min)
@@ -220,13 +280,22 @@ class TextField(UiElement):
             text_changed = False
 
             if (input.text_input != ""):
-                self.curr_text += input.text_input
+                self.curr_text.insert(self.curr_pos, input.text_input)
+                self.curr_pos += len(input.text_input)
+
                 text_changed = True
 
-            if (pg.K_BACKSPACE in input.event_keys):
-                self.curr_text = self.curr_text[:-1]
+            if (pg.K_BACKSPACE in input.event_keys and len(self.curr_text) != 0 and self.curr_pos > 0):
+                self.curr_text.pop(self.curr_pos - 1)
+                self.curr_pos -= 1
                 text_changed = True
 
+            if (pg.K_LEFT in input.event_keys):
+                self.curr_pos = max(0, self.curr_pos - 1)
+
+            if (pg.K_RIGHT in input.event_keys):
+                self.curr_pos = min(len(self.curr_text), self.curr_pos + 1)
+        
             if (text_changed):
                 self._render_curr_text()
                 
@@ -237,7 +306,16 @@ class TextField(UiElement):
     def draw(self, dst: pg.Surface):
         pg.draw.rect(dst, self.bg_col, pg.Rect(self.x, self.y, self.width, self.height))
         dst.blit(self.text_surf, (self.x, self.y))
+        
+        if (self.cursor_showing):
+            metrics = TextField.TEXT_FIELD_FONT.size("".join(self.curr_text[:self.curr_pos]))
 
+            cursor_x = metrics[0] + 3
+                # print(metrics)
+                # cursor_x += metrics[len(metrics) - 1][3]
+            
+            pg.draw.rect(dst, self.cursor_col, pg.Rect(cursor_x, self.y + 2, 2, self.height - 2))
+        
 class ComboBox(UiElement):
     def __init__(self, x, y, starting_options: list[str]=[]):
         super().__init__()

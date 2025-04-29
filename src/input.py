@@ -1,6 +1,6 @@
 import pygame as pg
 
-event_keys = []
+event_keys = {}
 text_input = ""
 event_mouse = []
 
@@ -12,6 +12,9 @@ class Mouse:
 
 MODE_NORMAL = "normal"
 MODE_CROSSHAIR = "crosshair"
+
+MOD_CTRL = 4160
+MOD_NONE = 4096
 
 cursors = {
     MODE_NORMAL: pg.image.load("./assets/cursor.png"),
@@ -39,8 +42,9 @@ def update():
         text_input = event.text
 
     for event in pg.event.get(pg.KEYDOWN):
-        event_keys.append(event.key)        
+        event_keys[event.key] = event.mod   
 
+        print(event)
     for event in pg.event.get((pg.MOUSEBUTTONDOWN, pg.MOUSEBUTTONUP)):
         if (event.type == pg.MOUSEBUTTONDOWN and event.button == 1):
             Mouse.j_m_down = True
